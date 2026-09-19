@@ -1,0 +1,23 @@
+# Optional — only needed if you want a local MongoDB instead of (or
+# in addition to) Atlas, e.g. for offline development. If you're
+# pointing MONGODB_URI at Atlas directly, you don't need this file
+# at all.
+#
+# Local connection string when using this:
+#   MONGODB_URI=mongodb://scentisto_app:change_this_to_a_strong_password@localhost:27017/scentisto?authSource=scentisto
+services:
+  mongo:
+    image: mongo:7
+    container_name: scentisto-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root_dev_only
+      MONGO_INITDB_ROOT_PASSWORD: root_dev_only
+      MONGO_INITDB_DATABASE: scentisto
+    ports:
+      - "27017:27017"
+    volumes:
+      - scentisto_mongo_data:/data/db
+
+volumes:
+  scentisto_mongo_data:
