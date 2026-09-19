@@ -114,7 +114,7 @@ export default function ProductListing({
         </div>
       </section>
 
-      <div className="max-w-6xl mx-auto px-6 py-10 flex flex-1 w-full">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 py-10 flex flex-1 w-full">
         <div className="hidden md:block">
           <FilterSidebar
             categories={categories}
@@ -165,7 +165,7 @@ export default function ProductListing({
               No products match these filters yet.
             </p>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-10">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-3 sm:gap-x-6 gap-y-8 sm:gap-y-10">
               {products.map((p) => (
                 <ProductCard key={p.id} product={p} />
               ))}

@@ -69,7 +69,7 @@ export default function HomeSection({ section }) {
     const products = section.resolved?.products || [];
     if (products.length === 0) return null;
     return (
-      <section className="max-w-6xl mx-auto px-6 py-16 border-t border-border">
+      <section className="max-w-6xl mx-auto px-3 sm:px-6 py-16 border-t border-border">
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-2xl">{content.heading || section.title}</h2>
         </div>
