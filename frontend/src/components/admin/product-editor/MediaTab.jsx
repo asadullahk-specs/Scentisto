@@ -95,7 +95,7 @@ export default function MediaTab({
           </p>
         ) : (
           <>
-            <div className="grid grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
               {media.map((m) => (
                 <div key={m.id} className="admin-card p-3">
                   <div className="w-full h-28 bg-surface border border-border overflow-hidden mb-2">

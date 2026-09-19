@@ -28,6 +28,7 @@ const {
   validatePasswordStrength,
 } = require("../utils/password");
 const { signAccessToken } = require("../utils/jwt");
+const wrapController = require("../utils/wrapController");
 
 const MAX_ATTEMPTS = Number(process.env.MAX_FAILED_LOGIN_ATTEMPTS || 5);
 const LOCKOUT_MINUTES = Number(process.env.LOCKOUT_DURATION_MINUTES || 15);
@@ -189,4 +190,4 @@ async function logout(req, res) {
   return res.status(200).json({ message: "Logged out." });
 }
 
-module.exports = { register, loginStorefront, loginAdmin, me, logout };
+module.exports = wrapController({ register, loginStorefront, loginAdmin, me, logout });

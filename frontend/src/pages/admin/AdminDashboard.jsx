@@ -142,7 +142,7 @@ export default function AdminDashboard() {
       ) : (
         <div className="mt-8 space-y-8">
           {/* KPI cards */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard
               label="Revenue"
               value={formatCurrency(data.kpis.revenue.value)}
@@ -218,7 +218,7 @@ export default function AdminDashboard() {
             </ResponsiveContainer>
           </div>
 
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Order status breakdown */}
             <div className="admin-card">
               <div className="text-xs uppercase tracking-luxury text-ink/50 mb-4">

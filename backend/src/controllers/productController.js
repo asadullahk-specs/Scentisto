@@ -15,6 +15,7 @@ const mediaLibraryModel = require("../models/productMediaModel");
 const userModel = require("../models/userModel");
 const presenceTracker = require("../utils/presenceTracker");
 const { parsePagination, buildMeta } = require("../utils/pagination");
+const wrapController = require("../utils/wrapController");
 const {
   slugify,
   resolveMediaType,
@@ -65,6 +66,11 @@ async function listPublic(req, res) {
 }
 
 async function getPublicBySlug(req, res) {
+  // This response carries per-request live data (the view counter and
+  // the "N people viewing right now" badge), so it opts out of the
+  // edge cache applied to the rest of /api/products.
+  res.set("Cache-Control", "no-store");
+
   const product = await productModel.getFullBySlug(req.params.slug, {
     isAdmin: false,
   });
@@ -111,14 +117,15 @@ async function getPublicBySlug(req, res) {
 // page's own marketing signal, not a security-relevant action, and
 // carries no data beyond an ephemeral client-generated session id.
 async function heartbeatPresence(req, res) {
-  const product = await productModel.getFullBySlug(req.params.slug, {
-    isAdmin: false,
-  });
-  if (!product) return res.status(404).json({ error: "Product not found." });
+  res.set("Cache-Control", "no-store");
   const sessionId = String(req.body.sessionId || "").slice(0, 100);
   if (!sessionId)
     return res.status(422).json({ error: "sessionId is required." });
-  const viewers = presenceTracker.heartbeat(product.id, sessionId);
+  // Projected id-only lookup - see productModel.getPublishedIdBySlug
+  // for why this must not load the full document.
+  const productId = await productModel.getPublishedIdBySlug(req.params.slug);
+  if (!productId) return res.status(404).json({ error: "Product not found." });
+  const viewers = presenceTracker.heartbeat(productId, sessionId);
   res.json({ viewers });
 }
 
@@ -557,7 +564,7 @@ async function setGiftPackItemsAdmin(req, res) {
   res.json({ giftPackContents: contents });
 }
 
-module.exports = {
+module.exports = wrapController({
   listPublic,
   getPublicBySlug,
   listAdmin,
@@ -582,4 +589,4 @@ module.exports = {
   listMediaLibraryAdmin,
   setGiftPackItemsAdmin,
   heartbeatPresence,
-};
+});

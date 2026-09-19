@@ -249,6 +249,21 @@ async function getFullBySlug(slug, { isAdmin = false } = {}) {
   return obj;
 }
 
+/**
+ * Id-only lookup for the PDP presence heartbeat. That endpoint fires
+ * every ~30s per visitor, and it previously called getFullBySlug(),
+ * pulling the entire product document - every variant, every media
+ * entry, the whole long-form details sub-document - just to turn a
+ * slug into an id. This projects to _id only.
+ */
+async function getPublishedIdBySlug(slug) {
+  const doc = await Product.findOne(
+    { slug, status: "published", isVisible: true },
+    { _id: 1 },
+  ).lean();
+  return doc ? doc._id.toString() : null;
+}
+
 async function slugExists(slug, excludeId = null) {
   const filter = excludeId ? { slug, _id: { $ne: excludeId } } : { slug };
   return Boolean(await Product.exists(filter));
@@ -594,6 +609,7 @@ module.exports = {
   list,
   getFullById,
   getFullBySlug,
+  getPublishedIdBySlug,
   slugExists,
   skuExists,
   variantSkuExists,

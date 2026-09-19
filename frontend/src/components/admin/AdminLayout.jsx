@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAdminAuth } from "../../context/AdminAuthContext";
 import NotificationBell from "./NotificationBell";
@@ -50,12 +51,32 @@ const NAV_SECTIONS = [
 ];
 
 export default function AdminLayout({ children }) {
+  // The sidebar was a permanent `w-64` column. On any screen under
+  // ~900px that left the content area unusably narrow, and there was
+  // no way to collapse it - the admin panel was effectively
+  // desktop-only. It is now an off-canvas drawer below lg: and the
+  // fixed rail from lg: up, which is the same markup either way.
+  const [navOpen, setNavOpen] = useState(false);
   const { user, logout } = useAdminAuth();
   const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-bg flex">
-      <aside className="w-64 shrink-0 bg-ink text-bg flex flex-col">
+      {navOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-ink/50"
+          onClick={() => setNavOpen(false)}
+          role="presentation"
+        />
+      )}
+
+      <aside
+        className={`w-64 shrink-0 bg-ink text-bg flex flex-col
+          fixed inset-y-0 left-0 z-50 overflow-y-auto transition-transform duration-300
+          lg:static lg:translate-x-0 lg:transition-none ${
+            navOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+      >
         <div className="px-5 py-6 border-b border-bg/10">
           <Link to="/admin/dashboard" className="block">
             <img src={logoWordmarkWhite} alt="SCENTISTO" className="h-5 w-auto" />
@@ -65,7 +86,10 @@ export default function AdminLayout({ children }) {
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-4">
+        <nav
+          className="flex-1 overflow-y-auto py-4"
+          onClick={() => setNavOpen(false)}
+        >
           {NAV_SECTIONS.map((section) => (
             <div key={section.label} className="mb-5">
               <div className="px-4 mb-1 text-[10px] uppercase tracking-luxury text-bg/35">
@@ -117,10 +141,24 @@ export default function AdminLayout({ children }) {
       </aside>
 
       <main className="flex-1 min-w-0">
-        <div className="flex justify-end px-8 pt-4">
-          <NotificationBell />
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-8 pt-4">
+          <button
+            type="button"
+            onClick={() => setNavOpen(true)}
+            aria-label="Open admin menu"
+            className="lg:hidden p-2 -ml-2 text-ink/70 hover:text-ink"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
+          <div className="lg:ml-auto">
+            <NotificationBell />
+          </div>
         </div>
-        <div className="max-w-6xl mx-auto px-8 pb-10 pt-2">{children}</div>
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 pb-10 pt-2 min-w-0">
+          {children}
+        </div>
       </main>
     </div>
   );

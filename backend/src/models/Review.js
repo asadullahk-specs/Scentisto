@@ -42,6 +42,8 @@ const reviewSchema = new Schema(
   { timestamps: true, ...withId },
 );
 
-reviewSchema.index({ productId: 1, status: 1 });
+reviewSchema.index({ productId: 1, status: 1, createdAt: -1 });
+// Homepage testimonials: find({status:"approved"}).sort({isFeatured:-1, createdAt:-1})
+reviewSchema.index({ status: 1, isFeatured: -1, createdAt: -1 });
 
 module.exports = model("Review", reviewSchema);

@@ -115,7 +115,7 @@ export default function GeneralTab({
         />
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div>
           <label className="admin-label">Base Price (Rs.) *</label>
           <input
@@ -153,7 +153,7 @@ export default function GeneralTab({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div>
           <label className="admin-label">Gender</label>
           <select
@@ -193,7 +193,7 @@ export default function GeneralTab({
 
       <div>
         <label className="admin-label mb-3">Flags</label>
-        <div className="grid grid-cols-3 gap-y-2 gap-x-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-2 gap-x-4">
           {FLAGS.map(([key, label]) => (
             <label key={key} className="flex items-center gap-2 text-sm">
               <input

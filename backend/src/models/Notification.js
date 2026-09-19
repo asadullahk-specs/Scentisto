@@ -41,5 +41,7 @@ const notificationSchema = new Schema(
 );
 
 notificationSchema.index({ createdAt: -1 });
+// The bell polls getUnreadCount(): countDocuments({...scope, readBy: {$ne: adminId}})
+notificationSchema.index({ readBy: 1, createdAt: -1 });
 
 module.exports = model("Notification", notificationSchema);

@@ -55,13 +55,24 @@ export default function ProductListing({
   useEffect(() => {
     publicCategoriesApi
       .list()
-      .then((data) => setCategories(flattenCategories(data.categories || [])));
+      .then((data) => setCategories(flattenCategories(data.categories || [])))
+      // A failed category fetch must not take the whole page down -
+      // the grid is still perfectly usable without the filter list.
+      .catch(() => setCategories([]));
   }, []);
 
-  // Reset to page 1 whenever the shopper changes a filter (not on page change itself).
+  // Reset to page 1 whenever the shopper changes a filter (not on page
+  // change itself).
+  //
+  // The guard matters: this previously called setFilters
+  // unconditionally, so on mount it replaced `filters` with a new
+  // object that was value-identical but reference-different. `load`
+  // depends on `filters`, so it was recreated, and the effect below
+  // re-ran - meaning every visit to a listing page fired the products
+  // request twice. Only set state when the page actually needs moving.
   const filterKey = JSON.stringify({ ...filters, page: undefined });
   useEffect(() => {
-    setFilters((f) => ({ ...f, page: 1 }));
+    setFilters((f) => (f.page === 1 ? f : { ...f, page: 1 }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey]);
 
@@ -98,6 +109,17 @@ export default function ProductListing({
     load();
   }, [load]);
 
+  // Stop the page behind the filter drawer from scrolling while it is
+  // open, so a flick inside the drawer doesn't move the grid instead.
+  useEffect(() => {
+    if (!filterDrawerOpen) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [filterDrawerOpen]);
+
   const pageTitle =
     useSearchQuery && searchQuery
       ? `Search results for "${searchQuery}"`
@@ -107,14 +129,14 @@ export default function ProductListing({
     <div className="min-h-screen bg-bg flex flex-col">
       <Header />
 
-      <section className="bg-surface border-b border-border py-14">
-        <div className="max-w-6xl mx-auto px-6">
-          <h1 className="text-4xl mb-2">{pageTitle}</h1>
-          {subtitle && <p className="text-ink/50">{subtitle}</p>}
+      <section className="bg-surface border-b border-border py-8 sm:py-14">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <h1 className="text-[clamp(1.5rem,6vw,2.25rem)] mb-2 break-words">{pageTitle}</h1>
+          {subtitle && <p className="text-sm sm:text-base text-ink/50">{subtitle}</p>}
         </div>
       </section>
 
-      <div className="max-w-6xl mx-auto px-3 sm:px-6 py-10 flex flex-1 w-full">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10 flex flex-1 w-full min-w-0">
         <div className="hidden md:block">
           <FilterSidebar
             categories={categories}
@@ -123,7 +145,7 @@ export default function ProductListing({
           />
         </div>
 
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-6 gap-2 xs:gap-3">
             <p className="text-xs xs:text-sm text-ink/50 shrink-0 truncate">
               {meta ? `Showing ${meta.total} products` : ""}
@@ -156,18 +178,56 @@ export default function ProductListing({
             </div>
           </div>
 
-          {error && <p className="text-sm text-ink/70 mb-6">{error}</p>}
-
+          {/* An API failure used to render a one-line message above an
+              empty area with no way to recover. Each state now has an
+              explicit, actionable treatment. */}
           {loading ? (
-            <p className="text-sm text-ink/40">Loading products...</p>
+            <div className="py-16 text-center text-sm text-ink/40">
+              Loading products…
+            </div>
+          ) : error ? (
+            <div className="py-16 text-center">
+              <p className="text-sm text-ink/60 mb-2">Unable to load products.</p>
+              <p className="text-xs text-ink/40 mb-6">{error}</p>
+              <button type="button" className="btn-outline" onClick={load}>
+                Try Again
+              </button>
+            </div>
           ) : products.length === 0 ? (
-            <p className="text-sm text-ink/40">
-              No products match these filters yet.
-            </p>
+            <div className="py-16 text-center">
+              <p className="text-sm text-ink/60 mb-4">
+                No products match these filters yet.
+              </p>
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() =>
+                  setFilters({
+                    category: "",
+                    minPrice: "",
+                    maxPrice: "",
+                    fragranceFamily: "",
+                    gender: "",
+                    inStock: false,
+                    sortBy: "newest",
+                    page: 1,
+                  })
+                }
+              >
+                Clear Filters
+              </button>
+            </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-3 sm:gap-x-6 gap-y-8 sm:gap-y-10">
+            // 3 columns was the maximum at any width, so a 1440px
+            // display showed the same three cards as a 1024px one with
+            // enormous gutters. A fourth column comes in at xl.
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-3 sm:gap-x-6 gap-y-8 sm:gap-y-10">
               {products.map((p) => (
-                <ProductCard key={p.id} product={p} />
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  imageSizes="(min-width: 1280px) 260px, (min-width: 768px) 30vw, 46vw"
+                />
               ))}
             </div>
           )}
@@ -190,7 +250,7 @@ export default function ProductListing({
           onClick={() => setFilterDrawerOpen(false)}
         />
         <div
-          className={`absolute left-0 top-0 bottom-0 w-[82%] max-w-xs bg-bg overflow-y-auto transition-transform duration-300 ${
+          className={`absolute left-0 top-0 bottom-0 w-[88%] max-w-xs bg-bg overflow-y-auto overscroll-contain flex flex-col transition-transform duration-300 ${
             filterDrawerOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -200,19 +260,19 @@ export default function ProductListing({
               type="button"
               onClick={() => setFilterDrawerOpen(false)}
               aria-label="Close filters"
-              className="text-ink/50 hover:text-ink"
+              className="text-ink/50 hover:text-ink w-10 h-10 flex items-center justify-center -mr-2"
             >
               ✕
             </button>
           </div>
-          <div className="px-5">
+          <div className="px-4 flex-1">
             <FilterSidebar
               categories={categories}
               filters={filters}
               onChange={setFilters}
             />
           </div>
-          <div className="px-5 pb-6 pt-2">
+          <div className="px-4 pb-6 pt-2 sticky bottom-0 bg-bg border-t border-border">
             <button
               type="button"
               onClick={() => setFilterDrawerOpen(false)}

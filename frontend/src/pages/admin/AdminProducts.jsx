@@ -27,6 +27,43 @@ export default function AdminProducts() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [searchInput, setSearchInput] = useState("");
+
+  // Debounce the search box. It previously fired a request on every
+  // keystroke, so typing "oud" issued three admin list queries.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  /**
+   * Every row action used to be a bare `await api(...); load();` with
+   * no try/catch. If the call failed - a 403 from the role check, a
+   * 409, a timeout - the promise rejected, load() never ran, and the
+   * admin saw absolutely nothing happen. That is the "button does
+   * nothing" report. Each action now reports success or failure, and
+   * only refetches once the server has actually confirmed the change.
+   */
+  async function runAction(id, label, action) {
+    setBusyId(id);
+    setError(null);
+    setNotice(null);
+    try {
+      await action();
+      await load();
+      setNotice(label);
+      setTimeout(() => setNotice(null), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,27 +89,34 @@ export default function AdminProducts() {
     load();
   }, [load]);
 
-  async function handleStatusChange(product, newStatus) {
-    await adminProductsApi.setStatus(token, product.id, newStatus);
-    load();
+  function handleStatusChange(product, newStatus) {
+    return runAction(
+      product.id,
+      newStatus === "published"
+        ? `"${product.name}" is now live on the storefront.`
+        : `"${product.name}" has been unpublished.`,
+      () => adminProductsApi.setStatus(token, product.id, newStatus),
+    );
   }
 
-  async function handleDuplicate(product) {
-    await adminProductsApi.duplicate(token, product.id);
-    load();
+  function handleDuplicate(product) {
+    return runAction(product.id, `Duplicated "${product.name}".`, () =>
+      adminProductsApi.duplicate(token, product.id),
+    );
   }
 
-  async function handleDelete(product) {
+  function handleDelete(product) {
     if (!window.confirm(`Delete "${product.name}"? This cannot be undone.`))
-      return;
-    await adminProductsApi.remove(token, product.id);
-    load();
+      return undefined;
+    return runAction(product.id, `Deleted "${product.name}".`, () =>
+      adminProductsApi.remove(token, product.id),
+    );
   }
 
   return (
     <AdminLayout>
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-6">
+        <div className="min-w-0">
           <h1 className="text-2xl">Products</h1>
           <p className="text-sm text-ink/50 mt-1">
             Perfumes, bottles, gift packs, and accessories - one system.
@@ -86,7 +130,7 @@ export default function AdminProducts() {
         </button>
       </div>
 
-      <div className="flex items-center gap-2 mb-4 border-b border-border">
+      <div className="scroll-x flex items-center gap-2 mb-4 border-b border-border">
         {STATUS_TABS.map((tab) => (
           <button
             key={tab.value}
@@ -101,18 +145,15 @@ export default function AdminProducts() {
         ))}
       </div>
 
-      <div className="flex gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <input
-          className="admin-input max-w-xs"
+          className="admin-input sm:max-w-xs"
           placeholder="Search by name..."
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
         />
         <select
-          className="admin-input w-44"
+          className="admin-input w-full sm:w-44"
           value={type}
           onChange={(e) => {
             setType(e.target.value);
@@ -127,7 +168,16 @@ export default function AdminProducts() {
         </select>
       </div>
 
-      {error && <p className="text-sm text-ink/70 mb-4">{error}</p>}
+      {error && (
+        <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-4 py-3 mb-4">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p className="text-sm text-ink border border-border bg-surface px-4 py-3 mb-4">
+          {notice}
+        </p>
+      )}
 
       <div className="admin-card overflow-x-auto">
         <table className="admin-table">
@@ -200,7 +250,7 @@ export default function AdminProducts() {
                   <StatusBadge status={p.status} />
                 </td>
                 <td>
-                  <div className="flex items-center gap-3 text-xs">
+                  <div className="flex items-center gap-3 text-xs whitespace-nowrap">
                     <Link
                       to={`/admin/products/${p.id}/edit`}
                       className="hover:underline"
@@ -208,28 +258,32 @@ export default function AdminProducts() {
                       Edit
                     </Link>
                     <button
-                      className="hover:underline"
+                      className="hover:underline disabled:opacity-40"
+                      disabled={busyId === p.id}
                       onClick={() => handleDuplicate(p)}
                     >
                       Duplicate
                     </button>
                     {p.status === "published" ? (
                       <button
-                        className="hover:underline"
+                        className="hover:underline disabled:opacity-40"
+                        disabled={busyId === p.id}
                         onClick={() => handleStatusChange(p, "unpublished")}
                       >
                         Unpublish
                       </button>
                     ) : (
                       <button
-                        className="hover:underline"
+                        className="hover:underline disabled:opacity-40"
+                        disabled={busyId === p.id}
                         onClick={() => handleStatusChange(p, "published")}
                       >
                         Publish
                       </button>
                     )}
                     <button
-                      className="hover:underline text-ink/50"
+                      className="hover:underline text-ink/50 disabled:opacity-40"
+                      disabled={busyId === p.id}
                       onClick={() => handleDelete(p)}
                     >
                       Delete

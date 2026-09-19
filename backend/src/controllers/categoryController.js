@@ -1,5 +1,6 @@
 const categoryModel = require("../models/categoryModel");
 const { slugify } = require("../utils/media");
+const wrapController = require("../utils/wrapController");
 
 async function listPublic(req, res) {
   const rows = await categoryModel.listAll({ onlyVisible: true });
@@ -57,11 +58,11 @@ async function removeAdmin(req, res) {
   res.json({ message: "Category deleted." });
 }
 
-module.exports = {
+module.exports = wrapController({
   listPublic,
   getPublicBySlug,
   listAdmin,
   createAdmin,
   updateAdmin,
   removeAdmin,
-};
+});

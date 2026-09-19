@@ -35,6 +35,7 @@ export default function AdminProductEditor() {
   const [categories, setCategories] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [loading, setLoading] = useState(!isNew);
 
   const TABS =
@@ -43,7 +44,10 @@ export default function AdminProductEditor() {
   useEffect(() => {
     adminCategoriesApi
       .list(token)
-      .then((data) => setCategories(data.flat || []));
+      .then((data) => setCategories(data.flat || []))
+      // A failed category fetch must not block editing everything
+      // else on the form.
+      .catch(() => setCategories([]));
   }, [token]);
 
   const loadProduct = useCallback(async () => {
@@ -79,14 +83,27 @@ export default function AdminProductEditor() {
   async function handleSave() {
     setSaving(true);
     setError(null);
+    setNotice(null);
     try {
       const payload = toPayload(form);
       if (productId) {
-        await adminProductsApi.update(token, productId, payload);
+        const data = await adminProductsApi.update(token, productId, payload);
+        // Re-seed the form from the server's response rather than
+        // leaving the local draft in place. The backend normalises
+        // several fields on write (it slugifies, resolves the media
+        // type of a pasted URL, rewrites Drive links to the CDN form),
+        // so without this the editor kept showing what was typed
+        // instead of what was actually stored - and the admin got no
+        // confirmation the save had happened at all.
+        if (data?.product) setForm(toFormShape(data.product));
+        setNotice("Saved.");
+        setTimeout(() => setNotice(null), 3000);
       } else {
         const data = await adminProductsApi.create(token, payload);
         setProductId(data.product.id);
         navigate(`/admin/products/${data.product.id}/edit`, { replace: true });
+        setNotice("Product created. Media, Variants and Details are now available.");
+        setTimeout(() => setNotice(null), 4000);
       }
     } catch (err) {
       setError(err.message);
@@ -97,9 +114,9 @@ export default function AdminProductEditor() {
 
   return (
     <AdminLayout>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl">
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-6">
+        <div className="min-w-0">
+          <h1 className="text-2xl break-words">
             {isNew ? "Add Product" : form.name || "Edit Product"}
           </h1>
           <p className="text-sm text-ink/50 mt-1">
@@ -117,12 +134,17 @@ export default function AdminProductEditor() {
       </div>
 
       {error && (
-        <div className="admin-card mb-6 border-ink/30">
-          <p className="text-sm">{error}</p>
-        </div>
+        <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-4 py-3 mb-6">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p className="text-sm text-ink border border-border bg-surface px-4 py-3 mb-6">
+          {notice}
+        </p>
       )}
 
-      <div className="flex gap-1 mb-6 border-b border-border">
+      <div className="scroll-x flex gap-1 mb-6 border-b border-border">
         {TABS.map((tab) => (
           <button
             key={tab}

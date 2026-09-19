@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import AdminLayout from "../../components/admin/AdminLayout";
 import { adminReviewsApi } from "../../api/adminApi";
 import { useAdminAuth } from "../../context/AdminAuthContext";
+import useAdminAction from "../../hooks/useAdminAction";
 
 const STATUS_TABS = [
   ["pending", "Pending"],
@@ -16,6 +17,7 @@ export default function AdminReviews() {
   const [status, setStatus] = useState("pending");
   const [loading, setLoading] = useState(true);
   const [replyDrafts, setReplyDrafts] = useState({});
+  const [loadError, setLoadError] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -24,38 +26,64 @@ export default function AdminReviews() {
         status: status || undefined,
         perPage: 30,
       });
-      setReviews(data.reviews);
+      setReviews(data.reviews || []);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err.message);
     } finally {
       setLoading(false);
     }
   }, [token, status]);
 
+  const { run, error, notice, busyId } = useAdminAction(load);
+
   useEffect(() => {
     load();
   }, [load]);
 
-  async function handleStatus(review, newStatus) {
-    await adminReviewsApi.setStatus(token, review.id, newStatus);
-    load();
+  function handleStatus(review, newStatus) {
+    return run(() => adminReviewsApi.setStatus(token, review.id, newStatus), {
+      id: review.id,
+      successMessage:
+        newStatus === "approved"
+          ? "Review approved and now visible on the storefront."
+          : `Review ${newStatus}.`,
+    });
   }
 
-  async function handleFeature(review) {
-    await adminReviewsApi.setFeatured(token, review.id, !review.isFeatured);
-    load();
+  function handleFeature(review) {
+    return run(
+      () => adminReviewsApi.setFeatured(token, review.id, !review.isFeatured),
+      {
+        id: review.id,
+        successMessage: review.isFeatured
+          ? "Removed from featured testimonials."
+          : "Added to featured testimonials.",
+      },
+    );
   }
 
   async function handleReply(review) {
     const text = replyDrafts[review.id];
     if (!text) return;
-    await adminReviewsApi.reply(token, review.id, text);
-    setReplyDrafts((d) => ({ ...d, [review.id]: "" }));
-    load();
+    // The draft is only cleared once the server confirms the reply -
+    // clearing first meant a failed request silently discarded what
+    // the admin had typed.
+    const result = await run(
+      () => adminReviewsApi.reply(token, review.id, text),
+      { id: review.id, successMessage: "Reply posted." },
+    );
+    if (result !== undefined) {
+      setReplyDrafts((d) => ({ ...d, [review.id]: "" }));
+    }
   }
 
-  async function handleDelete(review) {
-    if (!window.confirm("Delete this review permanently?")) return;
-    await adminReviewsApi.remove(token, review.id);
-    load();
+  function handleDelete(review) {
+    if (!window.confirm("Delete this review permanently?")) return undefined;
+    return run(() => adminReviewsApi.remove(token, review.id), {
+      id: review.id,
+      successMessage: "Review deleted.",
+    });
   }
 
   return (
@@ -65,7 +93,18 @@ export default function AdminReviews() {
         Approve, moderate, and reply to customer product feedback.
       </p>
 
-      <div className="flex items-center gap-2 mb-6 border-b border-border">
+      {(error || loadError) && (
+        <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-4 py-3 mb-4">
+          {error || loadError}
+        </p>
+      )}
+      {notice && (
+        <p className="text-sm text-ink border border-border bg-surface px-4 py-3 mb-4">
+          {notice}
+        </p>
+      )}
+
+      <div className="scroll-x flex items-center gap-2 mb-6 border-b border-border">
         {STATUS_TABS.map(([value, label]) => (
           <button
             key={value}

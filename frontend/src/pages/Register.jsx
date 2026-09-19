@@ -42,23 +42,23 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg px-6 py-16">
+    <div className="min-h-screen flex items-center justify-center bg-bg px-4 sm:px-6 py-10 sm:py-16">
       <div className="w-full max-w-md">
-        <div className="text-center mb-10">
+        <div className="text-center mb-8 sm:mb-10">
           <p className="text-xs tracking-luxury uppercase text-ink/50 mb-3">
             Join SCENTISTO
           </p>
-          <h1 className="text-3xl">Create Account</h1>
+          <h1 className="text-2xl sm:text-3xl">Create Account</h1>
         </div>
 
         {success ? (
-          <div className="border border-border p-8 text-center">
+          <div className="border border-border p-6 sm:p-8 text-center">
             <p className="text-ink">Account created. Redirecting to sign in…</p>
           </div>
         ) : (
           <form
             onSubmit={handleSubmit}
-            className="space-y-5 border border-border p-8"
+            className="space-y-5 border border-border p-5 sm:p-8"
           >
             {formError && (
               <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-4 py-3">
@@ -66,7 +66,12 @@ export default function Register() {
               </p>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
+            {/* Was a hard grid-cols-2 at every width. Inside this
+                card at 320px each column is ~100px wide, and the
+                input's own horizontal padding eats 30px of that,
+                leaving about seven characters visible. One column
+                below 480px, two from there up. */}
+            <div className="grid grid-cols-1 xs:grid-cols-2 gap-4">
               <div>
                 <label className="label-luxury">First Name</label>
                 <input

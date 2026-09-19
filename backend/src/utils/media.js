@@ -70,18 +70,57 @@ function isGoogleDriveLink(url) {
  * original URL for anything that isn't a recognized Drive share
  * link (e.g. the admin already pasted a direct CDN URL).
  */
+/** Default width requested from Google's image CDN when no size is given. */
+const DEFAULT_IMAGE_WIDTH = 1200;
+
+/**
+ * Google's own image CDN endpoint for a Drive file.
+ *
+ * This replaces `drive.google.com/uc?export=view&id=...`, which was
+ * what this function produced before, and which is the single worst
+ * part of the old media path in production:
+ *   - it is served by drive.google.com, not a CDN edge, so every
+ *     visitor pays a round-trip to Google's origin;
+ *   - it is aggressively rate-limited and, past a threshold, returns
+ *     an HTML "can't scan for viruses" interstitial instead of image
+ *     bytes - which renders as a broken <img>;
+ *   - it always returns the FULL original upload. A 4 MB product
+ *     photo is downloaded in full to fill a 180px-wide card.
+ *
+ * lh3.googleusercontent.com/d/<id> is the same file served from
+ * Google's image CDN, and it accepts size options appended after
+ * "=": `=w400` (fit to width), `=w400-h500-c` (crop). That gives us
+ * genuinely responsive images and srcset without migrating a single
+ * asset off Drive.
+ */
+function driveImageUrl(fileId, width = DEFAULT_IMAGE_WIDTH) {
+  return `https://lh3.googleusercontent.com/d/${fileId}=w${Math.round(width)}`;
+}
+
 function toEmbeddableUrl(url, mediaType) {
   if (!isGoogleDriveLink(url)) return url;
   const fileId = extractDriveFileId(url);
   if (!fileId) return url;
 
   if (mediaType === "video" || mediaType === "360") {
-    // Drive doesn't serve raw video bytes reliably for direct <video src>;
-    // the /preview endpoint is the supported embeddable form (used in an <iframe>).
+    // Drive doesn't serve raw video bytes for a direct <video src>;
+    // /preview is the supported embeddable form (an <iframe>). The
+    // storefront must therefore mount this lazily - see the
+    // frontend's media util and ProductCard.
     return `https://drive.google.com/file/d/${fileId}/preview`;
   }
-  // Image: uc?export=view serves the raw file, usable directly in <img src>.
-  return `https://drive.google.com/uc?export=view&id=${fileId}`;
+  return driveImageUrl(fileId, DEFAULT_IMAGE_WIDTH);
+}
+
+/**
+ * Poster frame for a Drive-hosted video, so a product card can show
+ * a still image instead of mounting a Drive player iframe. Drive
+ * exposes generated thumbnails at the /thumbnail endpoint.
+ */
+function driveVideoPosterUrl(url, width = 640) {
+  const fileId = extractDriveFileId(url);
+  if (!fileId) return null;
+  return `https://drive.google.com/thumbnail?id=${fileId}&sz=w${Math.round(width)}`;
 }
 
 function detectTypeFromExtension(url) {
@@ -160,6 +199,9 @@ function slugify(text) {
 
 module.exports = {
   isValidHttpUrl,
+  driveImageUrl,
+  driveVideoPosterUrl,
+  DEFAULT_IMAGE_WIDTH,
   isGoogleDriveLink,
   extractDriveFileId,
   toEmbeddableUrl,

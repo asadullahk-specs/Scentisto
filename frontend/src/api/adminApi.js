@@ -5,7 +5,36 @@
  * Every function takes the admin access token explicitly (from
  * AdminAuthContext) - never reads it from storage.
  */
-import { apiClient } from "./apiClient";
+import { apiClient, invalidateCache } from "./apiClient";
+
+/**
+ * After an Admin mutation succeeds, drop any cached public GET it
+ * could have changed. Without this, an admin who publishes a product
+ * and then opens the storefront in the same tab session can still be
+ * served the pre-edit list out of apiClient's TTL cache - the
+ * "database updated but the UI didn't" symptom.
+ *
+ * (This clears the *client* cache. The CDN's own short s-maxage
+ * window, set in backend/src/app.js, is the other half and is why
+ * those windows are kept to 30-120s.)
+ */
+const READ_ONLY = new Set(["list", "get", "unreadCount"]);
+
+function withInvalidation(api, publicPrefixes) {
+  const wrapped = {};
+  for (const [name, fn] of Object.entries(api)) {
+    if (typeof fn !== "function" || READ_ONLY.has(name)) {
+      wrapped[name] = fn;
+      continue;
+    }
+    wrapped[name] = async (...args) => {
+      const result = await fn(...args);
+      publicPrefixes.forEach((prefix) => invalidateCache(prefix));
+      return result;
+    };
+  }
+  return wrapped;
+}
 
 function toQueryString(params = {}) {
   const usp = new URLSearchParams();
@@ -17,7 +46,7 @@ function toQueryString(params = {}) {
   return qs ? `?${qs}` : "";
 }
 
-export const adminProductsApi = {
+const adminProductsApiRaw = {
   list: (token, params) =>
     apiClient.get(`/admin/products${toQueryString(params)}`, token),
   get: (token, id) => apiClient.get(`/admin/products/${id}`, token),
@@ -92,7 +121,7 @@ export const adminMediaLibraryApi = {
     ),
 };
 
-export const adminCategoriesApi = {
+const adminCategoriesApiRaw = {
   list: (token) => apiClient.get(`/admin/categories`, token),
   create: (token, payload) =>
     apiClient.post(`/admin/categories`, payload, token),
@@ -101,7 +130,7 @@ export const adminCategoriesApi = {
   remove: (token, id) => apiClient.delete(`/admin/categories/${id}`, token),
 };
 
-export const adminCollectionsApi = {
+const adminCollectionsApiRaw = {
   list: (token) => apiClient.get(`/admin/collections`, token),
   create: (token, payload) =>
     apiClient.post(`/admin/collections`, payload, token),
@@ -110,7 +139,7 @@ export const adminCollectionsApi = {
   remove: (token, id) => apiClient.delete(`/admin/collections/${id}`, token),
 };
 
-export const adminReviewsApi = {
+const adminReviewsApiRaw = {
   list: (token, params) =>
     apiClient.get(`/admin/reviews${toQueryString(params)}`, token),
   setStatus: (token, id, status) =>
@@ -122,7 +151,7 @@ export const adminReviewsApi = {
   remove: (token, id) => apiClient.delete(`/admin/reviews/${id}`, token),
 };
 
-export const adminBlogsApi = {
+const adminBlogsApiRaw = {
   list: (token, params) =>
     apiClient.get(`/admin/blogs${toQueryString(params)}`, token),
   get: (token, id) => apiClient.get(`/admin/blogs/${id}`, token),
@@ -158,7 +187,7 @@ export const adminAnalyticsApi = {
     ),
 };
 
-export const adminHomepageApi = {
+const adminHomepageApiRaw = {
   list: (token) => apiClient.get(`/admin/homepage-sections`, token),
   create: (token, payload) =>
     apiClient.post(`/admin/homepage-sections`, payload, token),
@@ -169,3 +198,10 @@ export const adminHomepageApi = {
   remove: (token, id) =>
     apiClient.delete(`/admin/homepage-sections/${id}`, token),
 };
+
+export const adminProductsApi = withInvalidation(adminProductsApiRaw, ["/products", "/homepage", "/collections"]);
+export const adminCategoriesApi = withInvalidation(adminCategoriesApiRaw, ["/categories", "/products"]);
+export const adminCollectionsApi = withInvalidation(adminCollectionsApiRaw, ["/collections", "/products"]);
+export const adminReviewsApi = withInvalidation(adminReviewsApiRaw, ["/reviews", "/homepage"]);
+export const adminBlogsApi = withInvalidation(adminBlogsApiRaw, ["/blogs"]);
+export const adminHomepageApi = withInvalidation(adminHomepageApiRaw, ["/homepage"]);

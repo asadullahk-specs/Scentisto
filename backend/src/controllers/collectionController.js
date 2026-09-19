@@ -1,5 +1,6 @@
 const collectionModel = require("../models/collectionModel");
 const { slugify } = require("../utils/media");
+const wrapController = require("../utils/wrapController");
 
 async function listPublic(req, res) {
   const collections = await collectionModel.listAll({ onlyVisible: true });
@@ -37,10 +38,10 @@ async function removeAdmin(req, res) {
   res.json({ message: "Collection deleted." });
 }
 
-module.exports = {
+module.exports = wrapController({
   listPublic,
   listAdmin,
   createAdmin,
   updateAdmin,
   removeAdmin,
-};
+});

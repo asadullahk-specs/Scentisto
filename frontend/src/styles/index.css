@@ -6,49 +6,138 @@
   * {
     border-radius: 0 !important; /* No border radius, anywhere. Ever. */
   }
+
   html {
     @apply bg-bg text-ink;
     font-size: 15px;
+    /* Belt-and-braces guard against a single mis-sized child turning
+       the whole page into a sideways-scrolling mess on a phone. The
+       real fixes are per-component (min-w-0 on flex children,
+       contained carousels); this stops any one regression from
+       breaking the entire document.
+
+       `clip`, not `hidden`, on purpose: overflow:hidden on html/body
+       turns the root into a scroll container, which silently breaks
+       every `position: sticky` descendant - including the site
+       header and the product page's sticky gallery. overflow:clip
+       does not create a scroll container, so sticky keeps working. */
+    overflow-x: clip;
   }
+
   body {
     @apply font-body font-normal antialiased;
+    overflow-x: clip;
+    /* iOS Safari otherwise inflates font sizes in landscape. */
+    -webkit-text-size-adjust: 100%;
   }
+
+  /* No image may ever be wider than the box it sits in. */
+  img,
+  video,
+  iframe,
+  canvas,
+  svg {
+    max-width: 100%;
+  }
+
+  img,
+  video {
+    height: auto;
+  }
+
+  /* A long unbroken product name, SKU or URL must wrap rather than
+     force its container wider than the viewport. */
+  h1, h2, h3, h4, p, span, a, td, th, li, label {
+    overflow-wrap: break-word;
+  }
+
   h1, h2, h3, h4 {
     @apply font-display font-medium tracking-tight;
   }
+
   .product-name {
     @apply font-display font-medium;
   }
+
   :focus-visible {
     outline: 2px solid #111111;
     outline-offset: 2px;
   }
+
+  /* Prevent iOS from zooming the viewport when a form field is
+     focused. Anything below 16px CSS px triggers it, and the design's
+     text-sm inputs were under that threshold. */
+  @supports (-webkit-touch-callout: none) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 @layer components {
+  /* Buttons keep whitespace-nowrap (the luxury tracking looks wrong
+     wrapped), so their horizontal padding has to shrink on narrow
+     screens or a two-button row overflows a 320px viewport. */
   .btn-primary {
-    @apply bg-ink text-bg px-6 py-3 text-xs tracking-luxury uppercase whitespace-nowrap
+    @apply bg-ink text-bg px-4 xs:px-6 py-3 text-xs tracking-luxury uppercase whitespace-nowrap
+           min-h-[44px] inline-flex items-center justify-center
            hover:bg-charcoal transition-colors duration-200 disabled:opacity-40
            disabled:cursor-not-allowed;
   }
   .btn-outline {
-    @apply border border-ink text-ink px-6 py-3 text-xs tracking-luxury uppercase whitespace-nowrap
-           hover:bg-ink hover:text-bg transition-colors duration-200;
+    @apply border border-ink text-ink px-4 xs:px-6 py-3 text-xs tracking-luxury uppercase whitespace-nowrap
+           min-h-[44px] inline-flex items-center justify-center
+           hover:bg-ink hover:text-bg transition-colors duration-200
+           disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .input-luxury {
-    @apply w-full border border-border bg-bg px-4 py-3 text-sm text-ink
+    @apply w-full min-w-0 border border-border bg-bg px-4 py-3 text-sm text-ink
            placeholder:text-ink/40 focus:border-ink transition-colors duration-150;
   }
   .label-luxury {
     @apply block text-xs uppercase tracking-luxury text-ink/70 mb-2;
   }
 
+  /* Truncates a product name to two lines so a long name can't make
+     one card in a grid taller than its neighbours. */
+  .clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Horizontal scroller that hides its scrollbar but stays fully
+     reachable by touch, wheel and keyboard. */
+  .scroll-x {
+    @apply overflow-x-auto overflow-y-hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+  .scroll-x::-webkit-scrollbar {
+    display: none;
+  }
+
   /* ---- Admin CMS surfaces ---- */
   .admin-card {
-    @apply bg-bg border border-border p-6;
+    @apply bg-bg border border-border p-4 sm:p-6;
   }
   .admin-input {
-    @apply w-full border border-border bg-bg px-3 py-2.5 text-sm text-ink
+    @apply w-full min-w-0 border border-border bg-bg px-3 py-2.5 text-sm text-ink
            placeholder:text-ink/40 focus:border-ink transition-colors duration-150;
   }
   .admin-label {
@@ -59,22 +148,26 @@
   }
   .admin-table th {
     @apply text-left text-xs uppercase tracking-luxury text-ink/50 font-normal
-           border-b border-border px-3 py-3;
+           border-b border-border px-3 py-3 whitespace-nowrap;
   }
   .admin-table td {
     @apply border-b border-border px-3 py-3 align-middle;
   }
   .admin-btn {
-    @apply bg-ink text-bg px-5 py-2.5 text-xs tracking-luxury uppercase
+    @apply bg-ink text-bg px-4 sm:px-5 py-2.5 text-xs tracking-luxury uppercase
+           min-h-[40px] inline-flex items-center justify-center whitespace-nowrap
            hover:bg-charcoal transition-colors duration-200 disabled:opacity-40
            disabled:cursor-not-allowed;
   }
   .admin-btn-outline {
-    @apply border border-border text-ink px-5 py-2.5 text-xs tracking-luxury uppercase
-           hover:border-ink transition-colors duration-200 disabled:opacity-40;
+    @apply border border-border text-ink px-4 sm:px-5 py-2.5 text-xs tracking-luxury uppercase
+           min-h-[40px] inline-flex items-center justify-center whitespace-nowrap
+           hover:border-ink transition-colors duration-200 disabled:opacity-40
+           disabled:cursor-not-allowed;
   }
   .admin-btn-danger {
-    @apply border border-border text-ink/70 px-5 py-2.5 text-xs tracking-luxury uppercase
+    @apply border border-border text-ink/70 px-4 sm:px-5 py-2.5 text-xs tracking-luxury uppercase
+           min-h-[40px] inline-flex items-center justify-center whitespace-nowrap
            hover:border-ink hover:text-ink transition-colors duration-200;
   }
   .badge {
@@ -87,10 +180,10 @@
     @apply block px-4 py-2.5 text-sm text-bg bg-bg/15 border-l-2 border-gold;
   }
   .tab-btn {
-    @apply px-4 py-3 text-xs uppercase tracking-luxury text-ink/50 border-b-2 border-transparent
+    @apply px-3 sm:px-4 py-3 text-xs uppercase tracking-luxury text-ink/50 border-b-2 border-transparent
            hover:text-ink transition-colors duration-150 whitespace-nowrap shrink-0;
   }
   .tab-btn-active {
-    @apply px-4 py-3 text-xs uppercase tracking-luxury text-ink border-b-2 border-ink whitespace-nowrap shrink-0;
+    @apply px-3 sm:px-4 py-3 text-xs uppercase tracking-luxury text-ink border-b-2 border-ink whitespace-nowrap shrink-0;
   }
 }

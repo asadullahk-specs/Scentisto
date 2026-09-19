@@ -215,12 +215,58 @@ const productSchema = new Schema(
 );
 
 productSchema.index({ "variants.sku": 1 }, { unique: true, sparse: true });
-productSchema.index({ status: 1, isVisible: 1, showOnHomepage: 1 });
 productSchema.index({
   name: "text",
   shortDescription: "text",
   description: "text",
 });
+
+/**
+ * The indexes below were added to match the queries the storefront
+ * actually issues (productModel.list), not the schema's shape.
+ *
+ * Every public listing query starts with the same two predicates -
+ * { status: "published", isVisible: true } - and then adds ONE page
+ * discriminator (type for /perfumes|/bottles|/gift-sets, categoryId
+ * for a category filter, collectionIds for /collections/:slug, or a
+ * marketing flag for /best-sellers|/new-arrivals|/offers), then
+ * sorts. Each compound index below therefore leads with the two
+ * shared predicates, then the discriminator, then the sort key, so
+ * Mongo can satisfy match + sort from the index instead of doing a
+ * blocking in-memory sort over a collection scan.
+ *
+ * The marketing-flag indexes are PARTIAL (`isX: true` only). A plain
+ * index on a boolean that is false for ~95% of documents is mostly
+ * dead weight; a partial index stores only the handful of matching
+ * documents, which is exactly the set those pages ask for.
+ *
+ * Sidebar refinements (gender, fragranceFamily, price range, stock)
+ * are deliberately NOT indexed: they are always applied *on top of*
+ * one of the discriminators above, so they only ever filter an
+ * already-small result set. Indexing them too would add write cost
+ * for no measurable read benefit.
+ */
+productSchema.index({ status: 1, isVisible: 1, type: 1, createdAt: -1 });
+productSchema.index({ status: 1, isVisible: 1, categoryId: 1, createdAt: -1 });
+productSchema.index({ status: 1, isVisible: 1, collectionIds: 1 });
+
+// Sort variants used by the "Popularity" / "Best Selling" sort options.
+productSchema.index({ status: 1, isVisible: 1, salesCount: -1 });
+productSchema.index({ status: 1, isVisible: 1, viewsCount: -1 });
+
+for (const flag of [
+  "showOnHomepage",
+  "isFeatured",
+  "isBestSeller",
+  "isNewArrival",
+  "isFlashSale",
+  "isTrending",
+]) {
+  productSchema.index(
+    { status: 1, isVisible: 1, [flag]: 1, createdAt: -1 },
+    { partialFilterExpression: { [flag]: true } },
+  );
+}
 
 module.exports = model("Product", productSchema);
 module.exports.PRODUCT_TYPES = PRODUCT_TYPES;

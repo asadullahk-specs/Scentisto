@@ -4,6 +4,7 @@ import AdminLayout from "../../components/admin/AdminLayout";
 import Pagination from "../../components/admin/Pagination";
 import { adminBlogsApi } from "../../api/adminApi";
 import { useAdminAuth } from "../../context/AdminAuthContext";
+import useAdminAction from "../../hooks/useAdminAction";
 
 const STATUS_TABS = [
   ["", "All"],
@@ -19,6 +20,7 @@ export default function AdminBlogs() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -29,35 +31,55 @@ export default function AdminBlogs() {
         page,
         perPage: 20,
       });
-      setBlogs(data.blogs);
+      setBlogs(data.blogs || []);
       setMeta(data.meta);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err.message);
     } finally {
       setLoading(false);
     }
   }, [token, status, search, page]);
 
+  const { run, error, notice, busyId } = useAdminAction(load);
+
   useEffect(() => {
     load();
   }, [load]);
 
-  async function togglePublish(blog) {
-    await adminBlogsApi.setStatus(
-      token,
-      blog.id,
-      blog.status === "published" ? "draft" : "published",
-    );
-    load();
+  function togglePublish(blog) {
+    const next = blog.status === "published" ? "draft" : "published";
+    return run(() => adminBlogsApi.setStatus(token, blog.id, next), {
+      id: blog.id,
+      successMessage:
+        next === "published"
+          ? `"${blog.title}" is now published.`
+          : `"${blog.title}" moved back to draft.`,
+    });
   }
 
-  async function handleDelete(blog) {
-    if (!window.confirm(`Delete "${blog.title}" permanently?`)) return;
-    await adminBlogsApi.remove(token, blog.id);
-    load();
+  function handleDelete(blog) {
+    if (!window.confirm(`Delete "${blog.title}" permanently?`)) return undefined;
+    return run(() => adminBlogsApi.remove(token, blog.id), {
+      id: blog.id,
+      successMessage: `Deleted "${blog.title}".`,
+    });
   }
 
   return (
     <AdminLayout>
-      <div className="flex items-start justify-between mb-1">
+      {(error || loadError) && (
+        <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-4 py-3 mb-4">
+          {error || loadError}
+        </p>
+      )}
+      {notice && (
+        <p className="text-sm text-ink border border-border bg-surface px-4 py-3 mb-4">
+          {notice}
+        </p>
+      )}
+
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
         <div>
           <h1 className="text-2xl mb-1">Blogs</h1>
           <p className="text-sm text-ink/50">

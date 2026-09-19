@@ -8,8 +8,12 @@ import GiftPackContents from "../components/public/GiftPackContents";
 import { publicProductsApi } from "../api/publicApi";
 import { useCart } from "../context/CartContext";
 import { formatPrice } from "../utils/currency";
+import { imageProps, videoEmbedUrl, videoPosterUrl } from "../utils/media";
 
-const HEARTBEAT_INTERVAL_MS = 20000;
+// Was 20s. Each beat is a serverless invocation per visitor, and the
+// count it feeds is a soft marketing signal, so 45s is plenty - it is
+// still comfortably inside the backend's 90s presence TTL.
+const HEARTBEAT_INTERVAL_MS = 45000;
 
 function RulerIcon() {
   return (
@@ -66,6 +70,8 @@ export default function ProductDetail() {
   const [buyNowLoading, setBuyNowLoading] = useState(false);
   const [viewersNow, setViewersNow] = useState(0);
   const [showStickyBar, setShowStickyBar] = useState(false);
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const sessionIdRef = useRef(null);
   const ctaRef = useRef(null);
 
@@ -82,10 +88,11 @@ export default function ProductDetail() {
           res.variants?.find((v) => v.isDefault) || res.variants?.[0];
         setSelectedVariantId(defaultVariant?.id || null);
         setActiveMediaIndex(0);
+        setVideoPlaying(false);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [slug]);
+  }, [slug, reloadKey]);
 
   // "N people are viewing this right now" - a real (not simulated)
   // count of other visitors currently on this same product page,
@@ -102,6 +109,9 @@ export default function ProductDetail() {
     let cancelled = false;
 
     function sendHeartbeat() {
+      // No point counting a visitor as "viewing" a page in a
+      // backgrounded tab, and no point spending an invocation on it.
+      if (document.visibilityState === "hidden") return;
       publicProductsApi
         .sendPresenceHeartbeat(slug, sessionIdRef.current)
         .then((res) => {
@@ -158,7 +168,7 @@ export default function ProductDetail() {
     return (
       <div className="min-h-screen bg-bg">
         <Header />
-        <p className="max-w-6xl mx-auto px-6 py-24 text-sm text-ink/40">
+        <p className="max-w-6xl mx-auto px-4 sm:px-6 py-24 text-sm text-ink/40">
           Loading...
         </p>
       </div>
@@ -167,16 +177,28 @@ export default function ProductDetail() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-bg">
+      <div className="min-h-screen bg-bg flex flex-col">
         <Header />
-        <div className="max-w-6xl mx-auto px-6 py-24 text-center">
-          <p className="text-sm text-ink/60 mb-4">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-24 text-center flex-1">
+          <p className="text-sm text-ink/60 mb-6">
             {error || "Product not found."}
           </p>
-          <Link to="/" className="btn-outline inline-block">
-            Back to Home
-          </Link>
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            {error && (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => setReloadKey((k) => k + 1)}
+              >
+                Try Again
+              </button>
+            )}
+            <Link to="/" className="btn-outline">
+              Back to Home
+            </Link>
+          </div>
         </div>
+        <Footer />
       </div>
     );
   }
@@ -241,18 +263,21 @@ export default function ProductDetail() {
   }
 
   return (
-    <div className={`min-h-screen bg-bg ${showStickyBar ? "pb-20" : ""}`}>
+    // Reserve the sticky bar's height unconditionally rather than
+    // toggling padding with it - toggling caused the page to jump by
+    // ~80px every time the bar appeared or hid while scrolling.
+    <div className="min-h-screen bg-bg pb-24">
       <Header />
 
-      <div className="max-w-6xl mx-auto px-6 py-10">
-        <div className="text-xs text-ink/40 mb-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        <div className="text-xs text-ink/40 mb-6 sm:mb-8 break-words">
           <Link to="/" className="hover:text-ink">
             Home
           </Link>{" "}
           / {product.name}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-start">
           {/* Gallery - pinned in place while the info column (right)
               scrolls through its content, matching the reference video. */}
           <div className="md:sticky md:top-24 md:self-start overflow-hidden">
@@ -263,7 +288,10 @@ export default function ProductDetail() {
                   {galleryItems.map((item, index) => (
                     <button
                       key={index}
-                      onClick={() => setActiveMediaIndex(index)}
+                      onClick={() => {
+                        setActiveMediaIndex(index);
+                        setVideoPlaying(false);
+                      }}
                       className={`w-16 h-16 shrink-0 border overflow-hidden ${
                         index === activeMediaIndex
                           ? "border-ink"
@@ -276,7 +304,7 @@ export default function ProductDetail() {
                         </div>
                       ) : (
                         <img
-                          src={item.url}
+                          {...imageProps(item.url, { width: 128, maxWidth: 320 })}
                           alt=""
                           className="w-full h-full object-cover"
                         />
@@ -286,17 +314,57 @@ export default function ProductDetail() {
                 </div>
               )}
 
-              <div className="flex-1 min-w-0 aspect-square bg-surface border border-border overflow-hidden">
+              <div className="relative flex-1 min-w-0 aspect-square bg-surface border border-border overflow-hidden">
                 {activeMedia?.mediaType === "video" ? (
-                  <iframe
-                    src={activeMedia.url}
-                    title={product.name}
-                    className="w-full h-full"
-                    allow="autoplay"
-                  />
+                  // Click-to-play: the Drive player is only mounted
+                  // once the shopper asks for it, so arriving on a
+                  // product page whose first gallery item is a video
+                  // doesn't pull down an embedded player before the
+                  // page is even readable.
+                  videoPlaying ? (
+                    <iframe
+                      src={videoEmbedUrl(activeMedia.url)}
+                      title={product.name}
+                      className="w-full h-full"
+                      allow="autoplay"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setVideoPlaying(true)}
+                      className="group w-full h-full relative"
+                      aria-label={`Play video for ${product.name}`}
+                    >
+                      {videoPosterUrl(activeMedia.url, 1024) && (
+                        <img
+                          {...imageProps(videoPosterUrl(activeMedia.url, 1024), {
+                            width: 1024,
+                            sizes: "(min-width: 768px) 520px, 100vw",
+                            priority: activeMediaIndex === 0,
+                          })}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                      <span className="absolute inset-0 flex items-center justify-center">
+                        <span className="w-14 h-14 flex items-center justify-center bg-bg/90 border border-border group-hover:bg-bg">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        </span>
+                      </span>
+                    </button>
+                  )
                 ) : (
                   <img
-                    src={activeMedia?.url}
+                    {...imageProps(activeMedia?.url, {
+                      width: 1024,
+                      sizes: "(min-width: 768px) 520px, 100vw",
+                      // The main gallery image is this page's LCP
+                      // element, so the first one loads eagerly at
+                      // high priority; thumbnails stay lazy.
+                      priority: activeMediaIndex === 0,
+                    })}
                     alt={product.name}
                     className="w-full h-full object-cover"
                     onError={(e) => (e.currentTarget.style.visibility = "hidden")}
@@ -311,7 +379,10 @@ export default function ProductDetail() {
                 {galleryItems.map((item, index) => (
                   <button
                     key={index}
-                    onClick={() => setActiveMediaIndex(index)}
+                    onClick={() => {
+                      setActiveMediaIndex(index);
+                      setVideoPlaying(false);
+                    }}
                     className={`w-16 h-16 shrink-0 border overflow-hidden ${
                       index === activeMediaIndex
                         ? "border-ink"
@@ -324,7 +395,7 @@ export default function ProductDetail() {
                       </div>
                     ) : (
                       <img
-                        src={item.url}
+                        {...imageProps(item.url, { width: 128, maxWidth: 320 })}
                         alt=""
                         className="w-full h-full object-cover"
                       />
@@ -340,7 +411,7 @@ export default function ProductDetail() {
             <p className="text-xs uppercase tracking-luxury text-ink/50 mb-2">
               {product.brand}
             </p>
-            <h1 className="text-3xl mb-3">{product.name}</h1>
+            <h1 className="text-2xl sm:text-3xl mb-3 break-words">{product.name}</h1>
             <div className="flex items-center gap-3 mb-6">
               <span className="text-xl">{formatPrice(displayPrice)}</span>
               {salePrice != null && salePrice < price && (
@@ -572,9 +643,9 @@ export default function ProductDetail() {
         </div>
 
         {related?.recommended?.length > 0 && (
-          <section className="mt-20">
-            <h2 className="text-2xl mb-6">Complete the Look</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <section className="mt-12 sm:mt-20">
+            <h2 className="text-xl sm:text-2xl mb-6">Complete the Look</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-x-3 sm:gap-x-6 gap-y-8">
               {related.recommended.map((p) => (
                 <ProductCard key={p.id} product={p} />
               ))}
@@ -593,12 +664,12 @@ export default function ProductDetail() {
           showStickyBar ? "translate-y-0" : "translate-y-full"
         }`}
       >
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4">
           <div className="hidden sm:flex items-center gap-3 min-w-0">
             <div className="w-12 h-12 shrink-0 bg-surface border border-border overflow-hidden">
               {activeMedia?.mediaType !== "video" && activeMedia?.url && (
                 <img
-                  src={activeMedia.url}
+                  {...imageProps(activeMedia.url, { width: 96, maxWidth: 320 })}
                   alt=""
                   className="w-full h-full object-cover"
                 />
@@ -609,9 +680,9 @@ export default function ProductDetail() {
               <p className="text-xs text-ink/50">{formatPrice(displayPrice)}</p>
             </div>
           </div>
-          <div className="flex gap-3 flex-1 sm:flex-none">
+          <div className="flex gap-2 sm:gap-3 flex-1 sm:flex-none min-w-0">
             <button
-              className="btn-primary flex-1 sm:flex-none sm:w-40"
+              className="btn-primary flex-1 sm:flex-none sm:w-40 px-2 xs:px-4"
               disabled={cartState === "adding" || outOfStock}
               onClick={handleAddToCart}
             >
@@ -622,7 +693,7 @@ export default function ProductDetail() {
                   : "Add to Cart"}
             </button>
             <button
-              className="btn-outline flex-1 sm:flex-none sm:w-32"
+              className="btn-outline flex-1 sm:flex-none sm:w-32 px-2 xs:px-4"
               disabled={buyNowLoading || outOfStock}
               onClick={handleBuyNow}
             >

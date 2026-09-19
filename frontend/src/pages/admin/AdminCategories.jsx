@@ -10,10 +10,37 @@ export default function AdminCategories() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
+  const [notice, setNotice] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   const load = useCallback(async () => {
-    const data = await adminCategoriesApi.list(token);
-    setCategories(data.flat || []);
+    setLoading(true);
+    try {
+      const data = await adminCategoriesApi.list(token);
+      setCategories(data.flat || []);
+      setError(null);
+    } catch (err) {
+      // Previously uncaught: a failed load left an empty table that
+      // was indistinguishable from "no categories exist yet".
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, [token]);
+
+  /** Shared wrapper so no row action can fail silently. */
+  async function runAction(label, action) {
+    setError(null);
+    setNotice(null);
+    try {
+      await action();
+      await load();
+      setNotice(label);
+      setTimeout(() => setNotice(null), 3000);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
 
   useEffect(() => {
     load();
@@ -29,7 +56,9 @@ export default function AdminCategories() {
         parentId: draft.parentId || null,
       });
       setDraft({ name: "", parentId: "" });
-      load();
+      await load();
+      setNotice("Category added.");
+      setTimeout(() => setNotice(null), 3000);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -37,22 +66,26 @@ export default function AdminCategories() {
     }
   }
 
-  async function handleToggleVisible(category) {
-    await adminCategoriesApi.update(token, category.id, {
-      isVisible: !category.isVisible,
-    });
-    load();
+  function handleToggleVisible(category) {
+    return runAction(
+      `"${category.name}" is now ${category.isVisible ? "hidden from" : "visible on"} the storefront.`,
+      () =>
+        adminCategoriesApi.update(token, category.id, {
+          isVisible: !category.isVisible,
+        }),
+    );
   }
 
-  async function handleDelete(category) {
+  function handleDelete(category) {
     if (
       !window.confirm(
         `Delete "${category.name}"? Products keep their data but lose this category.`,
       )
     )
-      return;
-    await adminCategoriesApi.remove(token, category.id);
-    load();
+      return undefined;
+    return runAction(`Deleted "${category.name}".`, () =>
+      adminCategoriesApi.remove(token, category.id),
+    );
   }
 
   return (
@@ -64,10 +97,22 @@ export default function AdminCategories() {
         </p>
       </div>
 
-      {error && <p className="text-sm text-ink/70 mb-4">{error}</p>}
+      {error && (
+        <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-4 py-3 mb-4">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p className="text-sm text-ink border border-border bg-surface px-4 py-3 mb-4">
+          {notice}
+        </p>
+      )}
 
       <div className="admin-card mb-6">
-        <div className="grid grid-cols-3 gap-4 items-end">
+        {/* grid-cols-3 never collapsed, so on a tablet or phone the
+            name field, the parent select and the submit button were
+            each about a third of a narrow screen. */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:items-end">
           <div>
             <label className="admin-label">Name</label>
             <input
@@ -142,10 +187,17 @@ export default function AdminCategories() {
                 </td>
               </tr>
             ))}
-            {categories.length === 0 && (
+            {loading && (
               <tr>
                 <td colSpan={5} className="text-center text-ink/40 py-8">
-                  No categories yet.
+                  Loading categories…
+                </td>
+              </tr>
+            )}
+            {!loading && categories.length === 0 && (
+              <tr>
+                <td colSpan={5} className="text-center text-ink/40 py-8">
+                  {error ? "Couldn't load categories." : "No categories yet."}
                 </td>
               </tr>
             )}

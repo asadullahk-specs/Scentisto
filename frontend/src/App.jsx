@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { CustomerAuthProvider } from "./context/CustomerAuthContext";
 import { CartProvider } from "./context/CartContext";
@@ -20,19 +21,38 @@ import Blog from "./pages/Blog";
 import BlogPost from "./pages/BlogPost";
 import CollectionListing from "./pages/CollectionListing";
 import ProductDetail from "./pages/ProductDetail";
-import AdminLogin from "./pages/AdminLogin";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import AdminActivityLog from "./pages/admin/AdminActivityLog";
-import AdminProducts from "./pages/admin/AdminProducts";
-import AdminProductEditor from "./pages/admin/AdminProductEditor";
-import AdminCategories from "./pages/admin/AdminCategories";
-import AdminMediaLibrary from "./pages/admin/AdminMediaLibrary";
-import AdminOrders from "./pages/admin/AdminOrders";
-import AdminOrderDetail from "./pages/admin/AdminOrderDetail";
-import AdminReviews from "./pages/admin/AdminReviews";
-import AdminHomepageCMS from "./pages/admin/AdminHomepageCMS";
-import AdminBlogs from "./pages/admin/AdminBlogs";
-import AdminBlogEditor from "./pages/admin/AdminBlogEditor";
+
+
+/**
+ * The Admin CMS is lazy-loaded. It is the only part of the app that
+ * uses recharts (~383 kB raw / ~106 kB gzipped), and because every
+ * admin page was statically imported here, that chart library sat in
+ * the initial JavaScript graph of the *public storefront* too - every
+ * shopper downloaded and parsed the admin dashboard's charting code
+ * before the homepage could become interactive. Splitting it here
+ * keeps it entirely out of the storefront's critical path.
+ */
+const AdminLogin = lazy(() => import("./pages/AdminLogin"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminActivityLog = lazy(() => import("./pages/admin/AdminActivityLog"));
+const AdminProducts = lazy(() => import("./pages/admin/AdminProducts"));
+const AdminProductEditor = lazy(() => import("./pages/admin/AdminProductEditor"));
+const AdminCategories = lazy(() => import("./pages/admin/AdminCategories"));
+const AdminMediaLibrary = lazy(() => import("./pages/admin/AdminMediaLibrary"));
+const AdminOrders = lazy(() => import("./pages/admin/AdminOrders"));
+const AdminOrderDetail = lazy(() => import("./pages/admin/AdminOrderDetail"));
+const AdminReviews = lazy(() => import("./pages/admin/AdminReviews"));
+const AdminHomepageCMS = lazy(() => import("./pages/admin/AdminHomepageCMS"));
+const AdminBlogs = lazy(() => import("./pages/admin/AdminBlogs"));
+const AdminBlogEditor = lazy(() => import("./pages/admin/AdminBlogEditor"));
+
+function AdminFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center text-sm text-ink/40">
+      Loading admin…
+    </div>
+  );
+}
 
 export default function App() {
   return (
@@ -49,6 +69,7 @@ export default function App() {
         path="/admin/*"
         element={
           <AdminAuthProvider>
+            <Suspense fallback={<AdminFallback />}>
             <Routes>
               <Route index element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="login" element={<AdminLogin />} />
@@ -166,6 +187,7 @@ export default function App() {
               />
               <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
             </Routes>
+            </Suspense>
           </AdminAuthProvider>
         }
       />

@@ -169,7 +169,7 @@ export default function VariantsTab({ productId, variants, reload }) {
         <h3 className="text-sm uppercase tracking-luxury text-ink/60 mb-4">
           Add Variant
         </h3>
-        <div className="grid grid-cols-6 gap-3 items-end">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
           <div>
             <label className="admin-label">Label</label>
             <input

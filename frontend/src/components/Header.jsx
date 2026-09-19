@@ -74,6 +74,31 @@ export default function Header() {
     if (searchOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
   }, [searchOpen]);
 
+  // The mobile menu can be taller than a short phone viewport, so the
+  // page behind it must not scroll while it is open - otherwise the
+  // shopper scrolls the page instead of the menu and the menu's last
+  // items become unreachable.
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [menuOpen]);
+
+  // Escape closes whichever panel is open.
+  useEffect(() => {
+    if (!menuOpen && !searchOpen) return undefined;
+    function onKey(e) {
+      if (e.key !== "Escape") return;
+      setMenuOpen(false);
+      setSearchOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuOpen, searchOpen]);
+
   useEffect(() => {
     if (!accountOpen) return undefined;
     function onClickOutside(e) {
@@ -93,13 +118,17 @@ export default function Header() {
     }
   }
 
+  // NOTE: this element previously carried `relative` alongside
+  // `sticky` - two conflicting position values whose winner depended
+  // on Tailwind's internal rule order. Only `sticky` is wanted; the
+  // search panel positions against it either way.
   return (
-    <header className="sticky top-0 bg-bg z-30 relative">
+    <header className="sticky top-0 bg-bg z-30">
       <div className="border-b border-border">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-6 py-4 gap-6">
-          <Link to="/" className="flex items-center gap-2 shrink-0" onClick={() => setMenuOpen(false)}>
-            <img src={logoMark} alt="" className="h-8 w-8" />
-            <img src={logoWordmark} alt="SCENTISTO" className="h-5 w-auto" />
+        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 gap-3 sm:gap-6">
+          <Link to="/" className="flex items-center gap-2 shrink-0 min-w-0" onClick={() => setMenuOpen(false)}>
+            <img src={logoMark} alt="" className="h-7 w-7 sm:h-8 sm:w-8" width="32" height="32" />
+            <img src={logoWordmark} alt="SCENTISTO" className="h-4 sm:h-5 w-auto" />
           </Link>
 
           <nav className="hidden lg:flex items-center justify-center gap-8 text-sm flex-1">
@@ -110,7 +139,35 @@ export default function Header() {
             ))}
           </nav>
 
-          <div className="flex items-center gap-5 shrink-0">
+          <div className="flex items-center gap-1 xs:gap-2 sm:gap-4 shrink-0">
+            {/* Search and Cart are shown at EVERY width. Previously
+                this whole cluster was `hidden sm:flex`, so on any
+                phone under 640px there was no cart icon and no item
+                count anywhere in the header - the only route to the
+                cart was to open the burger menu and scroll to the
+                bottom of it. */}
+            <button
+              type="button"
+              onClick={() => setSearchOpen((o) => !o)}
+              aria-label="Search"
+              className="sm:hidden p-2 -m-0.5 hover:text-ink/60 transition-colors"
+            >
+              <SearchIcon />
+            </button>
+
+            <Link
+              to="/cart"
+              aria-label={`Cart${itemCount > 0 ? `, ${itemCount} items` : ""}`}
+              className="sm:hidden relative p-2 -m-0.5 hover:text-ink/60 transition-colors"
+            >
+              <BagIcon />
+              {itemCount > 0 && (
+                <span className="absolute top-0 right-0 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] leading-none bg-ink text-bg">
+                  {itemCount > 99 ? "99+" : itemCount}
+                </span>
+              )}
+            </Link>
+
             <div className="hidden sm:flex items-center gap-5">
               <button
                 type="button"
@@ -142,7 +199,7 @@ export default function Header() {
                 )}
 
                 {isAuthenticated && accountOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-44 bg-bg border border-border shadow-soft z-40 text-sm">
+                  <div className="absolute right-0 top-full mt-2 w-44 max-w-[calc(100vw-2rem)] bg-bg border border-border shadow-soft z-40 text-sm">
                     <div className="px-4 py-3 border-b border-border text-ink/50 text-xs truncate">
                       Hi, {user.firstName}
                     </div>
@@ -177,7 +234,8 @@ export default function Header() {
               type="button"
               onClick={() => setMenuOpen((o) => !o)}
               aria-label="Menu"
-              className="lg:hidden hover:text-ink/60 transition-colors"
+              aria-expanded={menuOpen}
+              className="lg:hidden p-2 -m-0.5 hover:text-ink/60 transition-colors"
             >
               <BurgerIcon open={menuOpen} />
             </button>
@@ -188,21 +246,27 @@ export default function Header() {
       {/* Search panel - drops down from the top of the header, full width */}
       <div
         className={`absolute left-0 right-0 bg-bg border-b border-border shadow-soft transition-all duration-300 overflow-hidden ${
-          searchOpen ? "max-h-24 opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+          searchOpen ? "max-h-28 opacity-100" : "max-h-0 opacity-0 pointer-events-none"
         }`}
       >
-        <form onSubmit={handleSearch} className="max-w-2xl mx-auto px-6 py-5 flex items-center gap-3">
-          <SearchIcon />
+        {/* min-w-0 on the input is what keeps this usable at 320px.
+            An <input> has an intrinsic min-content width derived from
+            its `size` attribute (~20 characters), and flex children
+            default to min-width:auto - so `flex-1` alone could not
+            shrink it below roughly 175px and the row overflowed the
+            viewport on a small phone. */}
+        <form onSubmit={handleSearch} className="max-w-2xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex items-center gap-2 sm:gap-3">
+          <span className="shrink-0 text-ink/50"><SearchIcon /></span>
           <input
             ref={searchInputRef}
             type="search"
-            placeholder="Search for perfumes, bottles..."
+            placeholder="Search perfumes, bottles..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Escape" && setSearchOpen(false)}
-            className="flex-1 bg-transparent border-0 border-b border-border focus:border-ink outline-none py-1.5 text-sm transition-colors"
+            className="flex-1 min-w-0 bg-transparent border-0 border-b border-border focus:border-ink outline-none py-1.5 text-sm transition-colors"
           />
-          <button type="button" onClick={() => setSearchOpen(false)} aria-label="Close search" className="text-ink/40 hover:text-ink">
+          <button type="button" onClick={() => setSearchOpen(false)} aria-label="Close search" className="shrink-0 p-2 text-ink/40 hover:text-ink">
             ✕
           </button>
         </form>
@@ -210,11 +274,18 @@ export default function Header() {
 
       {/* Mobile / tablet menu - nav links always, action icons only below 640px */}
       <div
-        className={`lg:hidden bg-bg border-b border-border overflow-hidden transition-all duration-300 ${
-          menuOpen ? "max-h-[420px]" : "max-h-0"
+        className={`lg:hidden bg-bg border-b border-border overflow-hidden transition-[max-height] duration-300 ${
+          menuOpen
+            ? "max-h-[calc(100vh-4rem)] overflow-y-auto"
+            : "max-h-0"
         }`}
       >
-        <nav className="max-w-6xl mx-auto px-6 py-4 flex flex-col gap-1 text-sm">
+        {/* Was a fixed max-h-[420px]. A logged-in shopper's menu has
+            eight rows, which overflows that on any phone, and with
+            overflow-hidden the last items (including Cart) simply
+            could not be reached. Now it is bounded by the viewport
+            and scrolls internally instead. */}
+        <nav className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex flex-col gap-1 text-sm">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.to}

@@ -115,6 +115,9 @@ const orderSchema = new Schema(
 );
 
 orderSchema.index({ userId: 1, createdAt: -1 });
+// Admin order list: optional status filter, always sorted newest-first.
+orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ createdAt: -1 });
 
 module.exports = model("Order", orderSchema);
 module.exports.ORDER_STATUSES = ORDER_STATUSES;

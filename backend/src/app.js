@@ -61,19 +61,47 @@ app.use(
   }),
 );
 
+// In the deployed topology the storefront and this API are served
+// from the SAME Vercel domain (vercel.json rewrites /api/* to the
+// function), so production browser traffic is same-origin and never
+// sends an Origin that needs allowing. The allow-list below therefore
+// only has to cover local development and any extra custom domain.
+//
+// Previously any *.vercel.app origin was accepted, which means every
+// unrelated Vercel-hosted site on the internet could call this API
+// from a browser with a victim's Authorization header if it ever got
+// one. That blanket rule is gone; preview deployments are opted in
+// explicitly via VERCEL_PREVIEW_ORIGIN_SUFFIX instead.
 const allowedOrigins = [
   process.env.CLIENT_ORIGIN,
   process.env.ADMIN_ORIGIN,
-].filter(Boolean);
+  process.env.PUBLIC_SITE_ORIGIN,
+]
+  .filter(Boolean)
+  .flatMap((value) => value.split(",").map((v) => v.trim()))
+  .filter(Boolean);
+
+// e.g. "scentisto-xyz.vercel.app" or ".scentisto.vercel.app" - only
+// this project's own preview subdomains, not all of *.vercel.app.
+const previewSuffix = (process.env.VERCEL_PREVIEW_ORIGIN_SUFFIX || "").trim();
+
 app.use(
   cors({
     origin(origin, callback) {
-      // Allow requests with no origin (e.g. mobile apps, curl, same-origin GET)
+      // No Origin header: same-origin navigation, curl, server-to-server.
       if (!origin) return callback(null, true);
-      // Allow configured origins (e.g. localhost, custom domain)
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      // Allow all Vercel deployments (production & preview subdomains)
-      if (origin.endsWith(".vercel.app")) return callback(null, true);
+      if (previewSuffix && origin.endsWith(previewSuffix)) {
+        return callback(null, true);
+      }
+      // Outside production, keep localhost on any port working so a
+      // dev server started on 5175 instead of 5173 isn't blocked.
+      if (
+        process.env.NODE_ENV !== "production" &&
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+      ) {
+        return callback(null, true);
+      }
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: false, // no cookies carry auth - nothing for the browser to auto-attach
@@ -103,20 +131,56 @@ app.disable("x-powered-by");
 
 app.get("/api/health", (req, res) => {
   const dbState = mongoose.connection.readyState; // 1 = connected
+  res.set("Cache-Control", "no-store");
   res
     .status(dbState === 1 ? 200 : 503)
     .json({ status: dbState === 1 ? "ok" : "db_unavailable" });
 });
 
+// Never let a cache hold on to anything session-scoped.
+app.use(["/api/auth", "/api/cart", "/api/orders", "/api/admin"], (req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
+
+/**
+ * Public catalog GETs are anonymous and byte-identical for every
+ * visitor, so they are safe to serve from Vercel's edge cache. This
+ * is what stops a serverless function (and an Atlas round-trip) from
+ * running for every single homepage view.
+ *
+ * max-age=0 keeps the *browser* from holding a private copy, so a
+ * shopper never sees a stale price after a hard refresh; s-maxage
+ * applies only to the shared CDN, and stale-while-revalidate lets the
+ * CDN serve the old copy while it refreshes in the background.
+ *
+ * TRADE-OFF, deliberately chosen: an Admin edit can take up to
+ * s-maxage seconds to appear on the public site. The windows below
+ * are kept short for that reason, and the product *detail* endpoint
+ * is left uncached entirely because it carries per-request live data
+ * (view counter, "N people viewing now").
+ */
+function edgeCache(sMaxAge, staleWhileRevalidate) {
+  return (req, res, next) => {
+    if (req.method === "GET") {
+      res.set(
+        "Cache-Control",
+        `public, max-age=0, s-maxage=${sMaxAge}, stale-while-revalidate=${staleWhileRevalidate}`,
+      );
+    }
+    next();
+  };
+}
+
 app.use("/api/auth", authRoutes);
 
 // Public storefront catalog - read-only, only published/visible records.
-app.use("/api/products", productRoutes);
-app.use("/api/categories", categoryRoutes);
-app.use("/api/collections", collectionRoutes);
-app.use("/api/reviews", reviewRoutes);
-app.use("/api/homepage", homepageRoutes);
-app.use("/api/blogs", blogRoutes);
+app.use("/api/products", edgeCache(30, 120), productRoutes);
+app.use("/api/categories", edgeCache(120, 600), categoryRoutes);
+app.use("/api/collections", edgeCache(120, 600), collectionRoutes);
+app.use("/api/reviews", edgeCache(60, 300), reviewRoutes);
+app.use("/api/homepage", edgeCache(30, 120), homepageRoutes);
+app.use("/api/blogs", edgeCache(120, 600), blogRoutes);
 
 // Admin CMS - every route inside requires an admin-scope session
 // (enforced per-router via requireAuth + requireScope("admin")).
